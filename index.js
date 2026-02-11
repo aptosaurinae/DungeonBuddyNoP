@@ -1,3 +1,5 @@
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("Using PROD:", process.env.NODE_ENV === "production");
 const fs = require("fs");
 const path = require("path");
 const { Client, Collection, GatewayIntentBits } = require("discord.js");
