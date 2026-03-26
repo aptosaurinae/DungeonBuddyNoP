@@ -393,14 +393,14 @@ function getDungeonButtonRow(mainObject) {
         createButton({ customId: tank.customId, emoji: tank.emoji, style: tank.style, disabled: tank.disabled }),
         createButton({ customId: healer.customId, emoji: healer.emoji, style: healer.style, disabled: healer.disabled }),
         createButton({ customId: dps.customId, emoji: dps.emoji, style: dps.style, disabled: dps.disabled }),
-        createButton({ customId: "getPassphrase", emoji: "🔑", style: ButtonStyle.Secondary }),
-        createButton({ customId: "groupUtility", label: "⚙️", style: ButtonStyle.Secondary })
+        createButton({ customId: "getPassphrase", emoji: "🔑", style: ButtonStyle.Secondary, disabled: false }),
+        createButton({ customId: "groupUtility", label: "⚙️", style: ButtonStyle.Secondary, disabled: false })
     );
 }
 
 function getTempFinishedButtonRow() {
     return new ActionRowBuilder().addComponents(
-        createButton({ customId: "groupUtility", emoji: "⚙️", style: ButtonStyle.Secondary })
+        createButton({ customId: "groupUtility", emoji: "⚙️", style: ButtonStyle.Secondary, disabled: false })
     );
 }
 
