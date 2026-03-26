@@ -92,12 +92,12 @@ module.exports = {
 
                     userStatsEmbedObject.fields = popularKeyFields;
 
+                    await i.deferUpdate();
+
                     await userStatsEmbed.edit({
                         embeds: [userStatsEmbedObject],
                         components: [getKeyLevelRow],
                     });
-
-                    await i.deferUpdate();
                 }
             });
 

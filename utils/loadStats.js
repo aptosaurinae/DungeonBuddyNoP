@@ -39,8 +39,8 @@ WITH popular_keys AS (
 	FROM
 		dungeoninstances
 	WHERE dungeon_difficulty in (:key_levels)
-    AND expansion = '${currentExpansion}'
-    AND season = '${currentSeason}'
+    AND expansion = :expansion
+    AND season = :season
 	GROUP BY
 		dungeon_name,
 		dungeon_difficulty
@@ -113,7 +113,7 @@ async function loadStats() {
     // Most popular keys in each bracket
     for (const key in key_levels) {
         const result = await sequelize.query(popularKeysQuery, {
-            replacements: { key_levels: key_levels[key] },
+            replacements: { key_levels: key_levels[key], expansion: currentExpansion, season: currentSeason },
             type: Sequelize.QueryTypes.SELECT,
         });
         dungeonStatsObject.mostPopularKeys[key] = result;
@@ -131,7 +131,7 @@ async function loadStats() {
         __dirname,
         `../jsonFiles/dungeonUserStats/${currentExpansion}/season${currentSeason}.json`
     );
-    fs.writeFileSync(dungeonUserStatsPath, JSON.stringify(dungeonStatsObject));
+    await fs.promises.writeFile(dungeonUserStatsPath, JSON.stringify(dungeonStatsObject));
 }
 
 module.exports = { loadStats };

@@ -1,4 +1,4 @@
-const { dungeonData, acronymToNameMap } = require("./loadJson.js");
+const { dungeonData, acronymToNameMap, FILLED_SPOT_TEXT } = require("./loadJson.js");
 
 function stripListedAsNumbers(listedAs) {
     const pattern = /\+\s*((\d\s*){1,2}|\d{1,2})\b|M\s*0\b/;
@@ -6,13 +6,13 @@ function stripListedAsNumbers(listedAs) {
     return result;
 }
 
-const cleanFilledValues = (role) => (role.includes("~~Filled NoP Spot~~") ? role.slice(0, -1) : role);
+const cleanFilledValues = (role) => (role.includes(FILLED_SPOT_TEXT) ? role.slice(0, -1) : role);
 
 const filterSpots = (spots, interactionUserId, reason) => {
     if (reason === "cancelled") {
-        return spots.filter((member) => member !== interactionUserId && !member.includes("~~Filled NoP Spot"));
+        return spots.filter((member) => member !== interactionUserId && !member.includes(FILLED_SPOT_TEXT));
     } else {
-        return spots.filter((member) => !member.includes("~~Filled NoP Spot"));
+        return spots.filter((member) => !member.includes(FILLED_SPOT_TEXT));
     }
 };
 
@@ -74,12 +74,13 @@ function generateListedAsString(dungeon) {
 }
 
 function generatePassphrase(wordList, wordCount = 3) {
-    for (let i = wordList.length - 1; i > 0; i--) {
+    const shuffled = [...wordList];
+    for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [wordList[i], wordList[j]] = [wordList[j], wordList[i]];
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    return wordList.slice(0, wordCount).join("");
+    return shuffled.slice(0, wordCount).join("");
 }
 
 const isDPSRole = (role) => role.includes("DPS");

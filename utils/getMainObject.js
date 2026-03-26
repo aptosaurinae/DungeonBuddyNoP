@@ -1,6 +1,6 @@
 const { ButtonStyle } = require("discord.js");
 const { generatePassphrase } = require("./utilFunctions");
-const { wowWords } = require("./loadJson.js");
+const { wowWords, FILLED_SPOT_TEXT } = require("./loadJson.js");
 const { tankEmoji, healerEmoji, dpsEmoji } = require("../config.js");
 
 function getMainObject(interaction) {
@@ -49,7 +49,7 @@ function getMainObject(interaction) {
             timeOrCompletion: "",
             listedAs: "",
             spotIcons: [],
-            filledSpot: "~~Filled NoP Spot~~",
+            filledSpot: FILLED_SPOT_TEXT,
             filledSpotCounter: 0,
             rolesToTag: "",
         },

@@ -31,6 +31,16 @@ module.exports = {
         const roles = ["tank", "healer", "dps", "dps2", "dps3"];
 
         const userId = interaction.options.getString("user_id");
+
+        // Validate that the user ID is a valid Discord snowflake (numeric, 17-20 digits)
+        if (!/^\d{17,20}$/.test(userId)) {
+            await interaction.reply({
+                content: "Please enter a valid Discord user ID (numeric, e.g. `123456789012345678`).",
+                ephemeral: true,
+            });
+            return;
+        }
+
         const userIdString = `<@${userId}>`;
 
         const orCondition = roles.map((role) => ({ [role]: userIdString }));

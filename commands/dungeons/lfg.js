@@ -319,7 +319,7 @@ module.exports = {
                                     }
                                 }
 
-                                if (isDPSRole(role) & (mainObject.roles["DPS"].spots.length >= 3)) {
+                                if (isDPSRole(role) && (mainObject.roles["DPS"].spots.length >= 3)) {
                                     mainObject.roles["DPS"].disabled = true;
                                 } else if (!isDPSRole(role)) {
                                     mainObject.roles[role].disabled = true;
@@ -364,7 +364,7 @@ module.exports = {
                         components: [],
                     });
 
-                    interactionStatusTable.create({
+                    await interactionStatusTable.create({
                         interaction_id: interaction.id,
                         interaction_user: interaction.user.id,
                         interaction_status: "timeoutBeforeCreation",
@@ -373,7 +373,7 @@ module.exports = {
                 } else if (reason === "cancelled") {
                     await createStatusEmbed("LFG cancelled by the user.", dungeonResponse);
 
-                    interactionStatusTable.create({
+                    await interactionStatusTable.create({
                         interaction_id: interaction.id,
                         interaction_user: interaction.user.id,
                         interaction_status: "cancelled",

@@ -1,4 +1,5 @@
 const { errorTable } = require("./loadDb");
+const { supportUserId, supportChannelId } = require("./loadJson");
 
 async function processError(error, interaction) {
     console.log(error);
@@ -21,7 +22,7 @@ async function processError(error, interaction) {
         // Optionally send a message to the user if the error is different
         await interaction.editReply({
             content:
-                "An error occurred while processing your request.\nIf this was a mistake, feel free to ping <@268396301928890369> in <#1090020015589294132>",
+                `An error occurred while processing your request.\nIf this was a mistake, feel free to ping <@${supportUserId}> in <#${supportChannelId}>`,
             ephemeral: true,
             components: [],
         });
@@ -65,10 +66,15 @@ async function createStatusEmbed(statusMessage, embedMessage) {
 
     // Automatically delete the status embed after 5 mins
     const timeout = setTimeout(async () => {
-        if (embedMessage.deletable) {
-            await embedMessage.delete().catch(console.error);
+        try {
+            if (embedMessage.deletable) {
+                await embedMessage.delete();
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            deleteTimeouts.delete(embedMessage.id); // Always clean up the map entry
         }
-        deleteTimeouts.delete(embedMessage.id); // Remove from the map once deleted
     }, 300_000);
 
     // Store the timeout ID

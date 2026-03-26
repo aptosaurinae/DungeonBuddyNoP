@@ -4,11 +4,9 @@ function loadJSON(path) {
     return JSON.parse(fs.readFileSync(path, "utf8"));
 }
 
-function getCurrentExpSeason() {
+function getConfig() {
     const config = loadJSON("./jsonFiles/config.json");
-    const currentExpansion = config.currentExpansion;
-    const currentSeason = config.currentSeason;
-    return [currentExpansion, currentSeason];
+    return config;
 }
 
 function getDungeonData(currentExpansion, currentSeason) {
@@ -25,8 +23,15 @@ function getDungeonData(currentExpansion, currentSeason) {
     return { dungeonData, dungeonList, acronymToNameMap };
 }
 
-const [currentExpansion, currentSeason] = getCurrentExpSeason();
+const config = getConfig();
+const currentExpansion = config.currentExpansion;
+const currentSeason = config.currentSeason;
+const supportUserId = config.supportUserId;
+const supportChannelId = config.supportChannelId;
 const { dungeonData, dungeonList, acronymToNameMap } = getDungeonData(currentExpansion, currentSeason);
 const wowWords = loadJSON("./jsonFiles/wowWords.json");
 
-module.exports = { dungeonData, dungeonList, acronymToNameMap, wowWords, currentExpansion, currentSeason };
+// Shared constant for filled spot placeholder text
+const FILLED_SPOT_TEXT = "~~Filled NoP Spot~~";
+
+module.exports = { dungeonData, dungeonList, acronymToNameMap, wowWords, currentExpansion, currentSeason, supportUserId, supportChannelId, FILLED_SPOT_TEXT };
