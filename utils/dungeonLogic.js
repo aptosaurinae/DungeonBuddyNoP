@@ -1,201 +1,223 @@
-const {
-    ActionRowBuilder,
-    StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder,
-    ButtonStyle,
-    ComponentType,
-} = require("discord.js");
+const { dungeonData, acronymToNameMap } = require("./loadJson.js");
 
-const { createButton } = require("./discordFunctions");
-const { generateRoleIcons, sendPassphraseToUser, addUserToRole, removeUserFromRole } = require("./utilFunctions");
-
-function getEligibleComposition(mainObject) {
-    if (!mainObject.interactionUser.userChosenRole) {
-        return new StringSelectMenuBuilder()
-            .setCustomId("composition")
-            .setPlaceholder("What roles are you looking for?")
-            .setMinValues(1)
-            .addOptions(new StringSelectMenuOptionBuilder().setLabel("Choose your role first!").setValue("none"));
-    }
-
-    const selectComposition = new StringSelectMenuBuilder()
-        .setCustomId("composition")
-        .setPlaceholder("What roles are you looking for?")
-        .setMinValues(1)
-        .setMaxValues(4);
-
-    for (const role in mainObject.roles) {
-        if (mainObject.roles[role].customId !== mainObject.interactionUser.userChosenRole) {
-            const label = role.startsWith("DPS") ? "DPS" : role;
-
-            selectComposition.addOptions(
-                new StringSelectMenuOptionBuilder()
-                    .setLabel(label)
-                    .setValue(mainObject.roles[role].customId)
-                    .setEmoji(mainObject.roles[role].emoji)
-            );
-        }
-    }
-
-    return selectComposition;
+// Remove level numbers or M0 from listedAs string
+function stripListedAsNumbers(listedAs) {
+    // Define regex pattern to match '+2' to '+50' or 'M0'
+    const pattern = /\+\s*((\d\s*){1,2}|\d{1,2})\b|M\s*0\b/;
+    return listedAs.replace(pattern, "").trim();
 }
 
-class DungeonManager {
-    constructor() {
-        this.tempFinishedCollector = null;
+// Clean filled spots from role strings
+const cleanFilledValues = (role) => (role.includes("~~Filled NoP Spot~~") ? role.slice(0, -1) : role);
+
+// Filter spots for notifications or cancellations
+const filterSpots = (spots, interactionUserId, reason) => {
+    if (reason === "cancelled") {
+        return spots.filter((member) => member !== interactionUserId && !member.includes("~~Filled NoP Spot"));
+    } else {
+        return spots.filter((member) => !member.includes("~~Filled NoP Spot"));
+    }
+};
+
+// Send cancellation message to channel
+async function sendCancelMessage(channel, mainObject, message) {
+    const interactionUserId = mainObject.interactionUser.userId;
+    const dungeonName = mainObject.embedData.dungeonName;
+    const dungeonDifficulty = mainObject.embedData.dungeonDifficulty;
+
+    let membersToTag = [];
+
+    // Notify other members except the interaction user
+    if (message === "cancelled by group creator") {
+        membersToTag = [
+            ...filterSpots(mainObject.roles.Tank.spots, interactionUserId, "cancelled"),
+            ...filterSpots(mainObject.roles.Healer.spots, interactionUserId, "cancelled"),
+            ...filterSpots(mainObject.roles.DPS.spots, interactionUserId, "cancelled"),
+        ];
+    } else {
+        membersToTag = [
+            ...filterSpots(mainObject.roles.Tank.spots, interactionUserId, "timed out"),
+            ...filterSpots(mainObject.roles.Healer.spots, interactionUserId, "timed out"),
+            ...filterSpots(mainObject.roles.DPS.spots, interactionUserId, "timed out"),
+        ];
     }
 
-    async processDungeonEmbed(i, rolesToTag, dungeon, difficulty, mainObject, groupUtilityCollector, callUser) {
-        if (!i.deferred && !i.replied) {
-            await i.deferUpdate();
-        }
+    if (membersToTag.length === 0) return;
 
-        const newDungeonObject = getDungeonObject(dungeon, difficulty, mainObject);
-
-        const messageContent = `${mainObject.embedData.dungeonName} ${mainObject.embedData.dungeonDifficulty} - ${
-            newDungeonObject.status === "full" ? `~~${rolesToTag}~~` : rolesToTag
-        }`;
-
-        const newEmbedButtonRow = getDungeonButtonRow(mainObject);
-
-        try {
-            if (newDungeonObject.status === "full") {
-                const tempFinishedButtonRow = getTempFinishedButtonRow();
-
-                const tempFinishedMessage = await i.editReply({
-                    content: messageContent,
-                    embeds: [newDungeonObject],
-                    components: [tempFinishedButtonRow],
-                });
-
-                this.tempFinishedCollector = tempFinishedMessage.createMessageComponentCollector({
-                    componentType: ComponentType.Button,
-                    time: 600_000,
-                });
-
-                this.tempFinishedCollector.on("end", async (_, reason) => {
-                    if (reason === "time" || reason === "finished") {
-                        groupUtilityCollector.stop("finished");
-                    } else if (reason === "groupInProgress") {
-                        this.tempFinishedCollector = null;
-                    }
-                });
-            } else {
-                if (this.tempFinishedCollector) {
-                    this.tempFinishedCollector.stop("groupInProgress");
-                }
-
-                await i.editReply({
-                    content: messageContent,
-                    embeds: [newDungeonObject],
-                    components: [newEmbedButtonRow],
-                });
-            }
-        } catch (e) {
-            console.log("Error processing dungeon embed:", e);
-        }
-
-        if (callUser === "newUser") {
-            await sendPassphraseToUser(i, mainObject);
-        }
-    }
+    await channel.send({
+        content: `${dungeonName} ${dungeonDifficulty} ${message} \n${membersToTag.join(" ")}`,
+    });
 }
 
-// ✅ HIER ZAT JE CRASH → GEFIXT
-function getDungeonObject(dungeon, difficulty, mainObject) {
-    const listedAs = mainObject.embedData.listedAs;
-    const timeCompletion = mainObject.embedData.timeOrCompletion;
-    const creatorNotes = mainObject.embedData.creatorNotes;
+// Generate role icons for embed
+function generateRoleIcons(mainObject) {
+    const roleIcons = [];
+    const roleKeys = Object.keys(mainObject.roles).slice(0, 3);
 
-    const tank = mainObject.roles.Tank;
-    const healer = mainObject.roles.Healer;
-    const dps = mainObject.roles.DPS;
+    for (const role of roleKeys) {
+        mainObject.roles[role].spots.forEach(() => {
+            roleIcons.push(mainObject.roles[role].emoji);
+        });
+    }
+    return roleIcons;
+}
 
-    const tankEmoji = tank.emoji;
-    const healerEmoji = healer.emoji;
-    const dpsEmoji = dps.emoji;
+// Generate two random uppercase letters
+function generateRandomLetterPair() {
+    const alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let letters = "";
+    for (let i = 0; i < 2; i++) {
+        letters += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return letters.toUpperCase();
+}
 
-    const tankNickname = tank.nicknames.join("\n");
-    const healerNickname = healer.nicknames.join("\n");
+// Generate listedAs string for dungeon
+function generateListedAsString(dungeon) {
+    const dungeonAcronym = dungeonData[dungeon].acronym;
+    const randomLetterPair = generateRandomLetterPair();
+    return `NoP ${dungeonAcronym} ${randomLetterPair}`;
+}
 
-    let dpsNicknames = dps.nicknames;
+// Generate passphrase from a list of words
+function generatePassphrase(wordList, wordCount = 3) {
+    for (let i = wordList.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [wordList[i], wordList[j]] = [wordList[j], wordList[i]];
+    }
+    return wordList.slice(0, wordCount).join("");
+}
 
-    const totalDps = 3;
+// Check if role string contains DPS
+const isDPSRole = (role) => role.includes("DPS");
 
-    // ✅ FIX 1: Hard cap
-    dpsNicknames = dpsNicknames.slice(0, totalDps);
+// Parse roles to tag based on difficulty and required composition
+function parseRolesToTag(difficulty, requiredComposition, guildId) {
+    const uniqueRoles = [...new Set(requiredComposition)];
 
-    // ✅ FIX 2: No negative values
-    const missing = Math.max(0, totalDps - dpsNicknames.length);
+    let roleDifficultyString = "";
+    if (difficulty == "M0") roleDifficultyString = "-M0";
+    else if (difficulty < 4) roleDifficultyString = "-M2-3";
+    else if (difficulty < 7) roleDifficultyString = "-M4-6";
+    else if (difficulty < 10) roleDifficultyString = "-M7-9";
+    else if (difficulty < 12) roleDifficultyString = "-M10-11";
+    else if (difficulty < 14) roleDifficultyString = "-M12-13";
+    else roleDifficultyString = "-M14+";
 
-    const filledDpsEmojis = Array(totalDps).fill(dpsEmoji);
-    const filledDpsNicknames = dpsNicknames.concat(Array(missing).fill(" "));
+    const globalRoles = global.roleMap.get(guildId);
+    const rolesToTag = [];
 
-    const dpsList = filledDpsEmojis
-        .map((emoji, index) => `${emoji} ${filledDpsNicknames[index]}`)
-        .join("\n");
+    for (const role of uniqueRoles) {
+        const roleId = globalRoles.get(`${role}${roleDifficultyString}`);
+        rolesToTag.push(`${roleId}`);
+    }
+    return rolesToTag.map((roleId) => `<@&${roleId}>`).join(" ");
+}
 
-    const roleIcons = generateRoleIcons(mainObject);
-    const joinedRoleIcons = roleIcons.join(" ");
+// Send passphrase to user via ephemeral message
+async function sendPassphraseToUser(interaction, mainObject) {
+    await interaction.followUp({
+        content: `The passphrase for the dungeon is: \`${mainObject.utils.passphrase.phrase}\`\nAdd this to your note when applying to \`${mainObject.embedData.listedAs}\` in-game!`,
+        ephemeral: true,
+    });
+}
 
-    const roleFieldValue = `${tankEmoji} ${tankNickname}\n${healerEmoji} ${healerNickname}\n${dpsList}`;
+// Update button state if role is full
+function updateButtonState(mainObject, roleName) {
+    const role = mainObject.roles[roleName];
+    const roleLimit = roleName === "Tank" || roleName === "Healer" ? 1 : 3;
+    role.disabled = role.spots.length >= roleLimit;
+}
 
-    const fields = creatorNotes
-        ? [
-              {
-                  name: `${dungeon} ${difficulty} (${timeCompletion})`,
-                  value: `** \n"${creatorNotes}"\n\n${roleFieldValue}**`,
-                  inline: false,
-              },
-          ]
-        : [
-              {
-                  name: `${dungeon} ${difficulty} (${timeCompletion})`,
-                  value: `**\n${roleFieldValue}**`,
-                  inline: false,
-              },
-          ];
+// Remove user from role
+function removeUserFromRole(userId, userNickname, mainObject, roleName, roleData) {
+    roleData.spots.splice(roleData.spots.indexOf(userId), 1);
+    roleData.nicknames.splice(roleData.nicknames.indexOf(userNickname), 1);
+    updateButtonState(mainObject, roleName);
+}
 
-    const dungeonObject = {
-        color: 0x3c424b,
-        title: `${listedAs}  ${joinedRoleIcons}`,
-        fields,
-        footer: { text: "/lfghelp for more info about Dungeon Buddy" },
-        status: "inProgress",
-        spots: roleIcons.length,
-    };
+// Check if user exists in any role
+function userExistsInAnyRole(userId, mainObject) {
+    const firstThreeRoles = Object.entries(mainObject.roles).slice(0, 3);
+    for (let [roleName, roleData] of firstThreeRoles) {
+        if (roleData.spots.includes(userId)) return [roleName, roleData];
+    }
+    return false;
+}
 
-    if (roleIcons.length > 4) {
-        dungeonObject.status = "full";
-        dungeonObject.footer = null;
+// Add or update a user in a role
+function addUserToRole(userId, userNickname, mainObject, newRole, typeOfCollector) {
+    const role = mainObject.roles[newRole];
+
+    // Special case: interactionUser via groupUtilityCollector (filled spot)
+    if (userId === mainObject.interactionUser.userId && typeOfCollector === "groupUtilityCollector") {
+        const filledSpot = mainObject.embedData.filledSpot;
+        let filledSpotCounter = mainObject.embedData.filledSpotCounter;
+        const filledSpotCombined = `${filledSpot}${filledSpotCounter}`;
+
+        role.spots.push(filledSpotCombined);
+        role.nicknames.push(filledSpot);
+
+        mainObject.embedData.filledSpotCounter = filledSpotCounter + 1;
+        updateButtonState(mainObject, newRole);
+        return "interactionUser";
     }
 
-    return dungeonObject;
+    const existingRoleData = userExistsInAnyRole(userId, mainObject);
+
+    // User already exists in a role
+    if (existingRoleData) {
+        const [currentRoleName, currentRoleData] = existingRoleData;
+
+        if (currentRoleName === newRole) {
+            // User is updating their own listing (cogwheel)
+            return "updatedOwnListing";
+        }
+
+        // Remove user from old role
+        removeUserFromRole(userId, userNickname, mainObject, currentRoleName, currentRoleData);
+    } else {
+        // New user: check role limits
+        const roleLimit = newRole === "Tank" || newRole === "Healer" ? 1 : 3;
+        if (role.spots.length >= roleLimit) return "roleFull";
+    }
+
+    // Add user to the new role
+    role.spots.push(userId);
+    role.nicknames.push(userNickname);
+    updateButtonState(mainObject, newRole);
+
+    return existingRoleData ? "existingUser" : "newUser";
 }
 
-function getDungeonButtonRow(mainObject) {
-    const tank = mainObject.roles.Tank;
-    const healer = mainObject.roles.Healer;
-    const dps = mainObject.roles.DPS;
+// Send invalid dungeon string message
+async function invalidDungeonString(interaction, reason) {
+    let breakdownString = `\n\nExample string: \`${Object.keys(acronymToNameMap)[0].toLowerCase()} 0tbc d hdd\`\n\`aa\` - Short form dungeon name\n\`0tbc\` - dungeon level + run intention\n\`d\` - your role\n\`hdd\` - Required roles\n\nRun Intentions:\ntbc = Time But Complete\ntoa = Time or Abandon\nvc = Vault Completion\n\nShort form Dungeon Names (not case-sensitive)`;
+    for (const acronym in acronymToNameMap) {
+        breakdownString += `\n ${acronym} - ${acronymToNameMap[acronym]}`;
+    }
 
-    return new ActionRowBuilder().addComponents(
-        createButton({ customId: tank.customId, emoji: tank.emoji, style: tank.style, disabled: tank.disabled }),
-        createButton({ customId: healer.customId, emoji: healer.emoji, style: healer.style, disabled: healer.disabled }),
-        createButton({ customId: dps.customId, emoji: dps.emoji, style: dps.style, disabled: dps.disabled }),
-        createButton({ customId: "getPassphrase", emoji: "🔑", style: ButtonStyle.Secondary }),
-        createButton({ customId: "groupUtility", label: "⚙️", style: ButtonStyle.Secondary })
-    );
-}
+    const invalidDungeonString = `Please enter a valid quick string.`;
+    reason = reason ? reason + breakdownString : invalidDungeonString + breakdownString;
 
-function getTempFinishedButtonRow() {
-    return new ActionRowBuilder().addComponents(
-        createButton({ customId: "groupUtility", emoji: "⚙️", style: ButtonStyle.Secondary })
-    );
+    await interaction.reply({
+        content: reason,
+        ephemeral: true,
+    });
 }
 
 module.exports = {
-    getEligibleComposition,
-    getDungeonObject,
-    getDungeonButtonRow,
-    DungeonManager,
+    stripListedAsNumbers,
+    cleanFilledValues,
+    generateRoleIcons,
+    generateListedAsString,
+    generatePassphrase,
+    isDPSRole,
+    parseRolesToTag,
+    userExistsInAnyRole,
+    addUserToRole,
+    sendPassphraseToUser,
+    removeUserFromRole,
+    invalidDungeonString,
+    sendCancelMessage,
 };
