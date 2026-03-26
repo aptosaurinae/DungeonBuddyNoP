@@ -1,11 +1,7 @@
 const { dungeonData, acronymToNameMap } = require("./loadJson.js");
 
 function stripListedAsNumbers(listedAs) {
-    // Define the regex pattern to match '+2' to '+50', with optional spaces
-    // const pattern = /\+\s*(?:[2-9]|[1-4][0-9]|50)\b|M\s*0\b/;
     const pattern = /\+\s*((\d\s*){1,2}|\d{1,2})\b|M\s*0\b/;
-
-    // Replace the matched pattern with an empty string
     const result = listedAs.replace(pattern, "").trim();
     return result;
 }
@@ -27,7 +23,6 @@ async function sendCancelMessage(channel, mainObject, message) {
 
     let membersToTag = [];
 
-    // Only notify the other members that are not the interaction user
     if (message === "cancelled by group creator") {
         membersToTag = [
             ...filterSpots(mainObject.roles.Tank.spots, interactionUserId, "cancelled"),
@@ -42,10 +37,7 @@ async function sendCancelMessage(channel, mainObject, message) {
         ];
     }
 
-    // If there are no members to tag, return
-    if (membersToTag.length === 0) {
-        return;
-    }
+    if (membersToTag.length === 0) return;
 
     await channel.send({
         content: `${dungeonName} ${dungeonDifficulty} ${message} \n${membersToTag.join(" ")}`,
@@ -54,8 +46,8 @@ async function sendCancelMessage(channel, mainObject, message) {
 
 function generateRoleIcons(mainObject) {
     const roleIcons = [];
-
     const roleKeys = Object.keys(mainObject.roles).slice(0, 3);
+
     for (const role of roleKeys) {
         mainObject.roles[role].spots.forEach(() => {
             roleIcons.push(mainObject.roles[role].emoji);
@@ -78,57 +70,42 @@ function generateRandomLetterPair() {
 function generateListedAsString(dungeon) {
     const dungeonAcronym = dungeonData[dungeon].acronym;
     const randomLetterPair = generateRandomLetterPair();
-
     return `NoP ${dungeonAcronym} ${randomLetterPair}`;
 }
 
 function generatePassphrase(wordList, wordCount = 3) {
-    // Shuffle the array of words
     for (let i = wordList.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [wordList[i], wordList[j]] = [wordList[j], wordList[i]];
     }
 
-    // Select the first 'wordCount' words and join them
     return wordList.slice(0, wordCount).join("");
 }
 
-// To parse "DPS" from "DPS2", "DPS3", etc.
 const isDPSRole = (role) => role.includes("DPS");
 
 function parseRolesToTag(difficulty, requiredComposition, guildId) {
-    // Extract unique roles from the requiredComposition list
     const uniqueRoles = [...new Set(requiredComposition)];
 
     let roleDifficultyString = "";
 
-    if (difficulty == "M0") {
-        roleDifficultyString = "-M0";
-    } else if (difficulty < 4) {
-        roleDifficultyString = "-M2-3";
-    } else if (difficulty < 7) {
-        roleDifficultyString = "-M4-6";
-    } else if (difficulty < 10) {
-        roleDifficultyString = "-M7-9";
-    } else if (difficulty < 12) {
-        roleDifficultyString = "-M10-11";
-    } else if (difficulty < 14) {
-        roleDifficultyString = "-M12-13";
-    } else {
-        roleDifficultyString = "-M14+";
-    }
+    if (difficulty == "M0") roleDifficultyString = "-M0";
+    else if (difficulty < 4) roleDifficultyString = "-M2-3";
+    else if (difficulty < 7) roleDifficultyString = "-M4-6";
+    else if (difficulty < 10) roleDifficultyString = "-M7-9";
+    else if (difficulty < 12) roleDifficultyString = "-M10-11";
+    else if (difficulty < 14) roleDifficultyString = "-M12-13";
+    else roleDifficultyString = "-M14+";
 
     const globalRoles = global.roleMap.get(guildId);
-
     const rolesToTag = [];
 
     for (const role of uniqueRoles) {
         const roleId = globalRoles.get(`${role}${roleDifficultyString}`);
         rolesToTag.push(`${roleId}`);
     }
-    const roleMentions = rolesToTag.map((roleId) => `<@&${roleId}>`).join(" ");
 
-    return roleMentions;
+    return rolesToTag.map((roleId) => `<@&${roleId}>`).join(" ");
 }
 
 async function sendPassphraseToUser(interaction, mainObject) {
@@ -138,7 +115,6 @@ async function sendPassphraseToUser(interaction, mainObject) {
     });
 }
 
-// Disable the button if the role is full
 function updateButtonState(mainObject, roleName) {
     const role = mainObject.roles[roleName];
     if (roleName === "Tank" || roleName === "Healer") {
@@ -148,9 +124,14 @@ function updateButtonState(mainObject, roleName) {
     }
 }
 
+// SAFE REMOVE
 function removeUserFromRole(userId, userNickname, mainObject, roleName, roleData) {
-    roleData.spots.splice(roleData.spots.indexOf(userId), 1);
-    roleData.nicknames.splice(roleData.nicknames.indexOf(userNickname), 1);
+    const spotIndex = roleData.spots.indexOf(userId);
+    if (spotIndex !== -1) roleData.spots.splice(spotIndex, 1);
+
+    const nickIndex = roleData.nicknames.indexOf(userNickname);
+    if (nickIndex !== -1) roleData.nicknames.splice(nickIndex, 1);
+
     updateButtonState(mainObject, roleName);
 }
 
@@ -165,54 +146,64 @@ function userExistsInAnyRole(userId, mainObject) {
     return false;
 }
 
+// FIXED FUNCTION
 function addUserToRole(userId, userNickname, mainObject, newRole, typeOfCollector) {
+    const role = mainObject.roles[newRole];
+
+    // Special case
     if (userId === mainObject.interactionUser.userId && typeOfCollector === "groupUtilityCollector") {
         const filledSpot = mainObject.embedData.filledSpot;
         let filledSpotCounter = mainObject.embedData.filledSpotCounter;
         const filledSpotCombined = `${filledSpot}${filledSpotCounter}`;
 
-        mainObject.roles[newRole].spots.push(filledSpotCombined);
-        mainObject.roles[newRole].nicknames.push(filledSpot);
+        role.spots.push(filledSpotCombined);
+        role.nicknames.push(filledSpot);
 
         filledSpotCounter++;
         mainObject.embedData.filledSpotCounter = filledSpotCounter;
 
         updateButtonState(mainObject, newRole);
         return "interactionUser";
+    }
+
+    // HARD LIMITS
+    if (newRole === "DPS" && role.spots.length >= 3) return "roleFull";
+    if ((newRole === "Tank" || newRole === "Healer") && role.spots.length >= 1) return "roleFull";
+
+    // DUPLICATE CHECK
+    if (role.spots.includes(userId)) return "alreadyInRole";
+
+    if (!userExistsInAnyRole(userId, mainObject)) {
+        role.spots.push(userId);
+        role.nicknames.push(userNickname);
+        updateButtonState(mainObject, newRole);
+        return "newUser";
     } else {
-        if (!userExistsInAnyRole(userId, mainObject)) {
-            mainObject.roles[newRole].spots.push(userId);
-            mainObject.roles[newRole].nicknames.push(userNickname);
-            updateButtonState(mainObject, newRole);
-            return "newUser";
-        } else {
-            const [roleName, roleData] = userExistsInAnyRole(userId, mainObject);
-            if (roleName === newRole) {
-                return "sameRole";
-            }
-            removeUserFromRole(userId, userNickname, mainObject, roleName, roleData);
-            mainObject.roles[newRole].spots.push(userId);
-            mainObject.roles[newRole].nicknames.push(userNickname);
-            updateButtonState(mainObject, newRole);
-            return "existingUser";
-        }
+        const [roleName, roleData] = userExistsInAnyRole(userId, mainObject);
+
+        if (roleName === newRole) return "sameRole";
+
+        removeUserFromRole(userId, userNickname, mainObject, roleName, roleData);
+
+        role.spots.push(userId);
+        role.nicknames.push(userNickname);
+        updateButtonState(mainObject, newRole);
+
+        return "existingUser";
     }
 }
 
 async function invalidDungeonString(interaction, reason) {
     let breakdownString = `\n\nExample string: \`${Object.keys(
         acronymToNameMap
-    )[0].toLowerCase()} 0tbc d hdd\`\n\`aa\` - Short form dungeon name\n\`0tbc\` - dungeon level + run intention\n\`d\` - your role\n\`hdd\` - Required roles\n\nRun Intentions:\ntbc = Time But Complete\ntoa = Time or Abandon\nvc = Vault Completion\n
-    Short form Dungeon Names (not case-sensitive)`;
+    )[0].toLowerCase()} 0tbc d hdd\`\n\`aa\` - Short form dungeon name\n\`0tbc\` - dungeon level + run intention\n\`d\` - your role\n\`hdd\` - Required roles\n\nRun Intentions:\ntbc = Time But Complete\ntoa = Time or Abandon\nvc = Vault Completion\n`;
+
     for (const acronym in acronymToNameMap) {
         breakdownString += `\n ${acronym} - ${acronymToNameMap[acronym]}`;
     }
-    const invalidDungeonString = `Please enter a valid quick string.`;
-    if (!reason) {
-        reason = invalidDungeonString + breakdownString;
-    } else {
-        reason = reason + breakdownString;
-    }
+
+    if (!reason) reason = `Please enter a valid quick string.` + breakdownString;
+    else reason += breakdownString;
 
     await interaction.reply({
         content: `${reason}`,
