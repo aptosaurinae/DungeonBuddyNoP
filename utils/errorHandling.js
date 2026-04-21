@@ -2,8 +2,14 @@ const { errorTable } = require("./loadDb");
 const { supportUserId, supportChannelId } = require("./loadJson");
 
 async function processError(error, interaction) {
-    console.log(error);
+    console.error(error);
     let errorName = "";
+
+    // Determine the correct response method based on the interaction state
+    const respond = (interaction.deferred || interaction.replied)
+        ? (options) => interaction.editReply(options)
+        : (options) => interaction.reply({ ...options, ephemeral: true });
+
     // Check if the error is due to a timeout
     if (
         error.name.includes("InteractionCollectorError") &&
@@ -13,27 +19,39 @@ async function processError(error, interaction) {
         errorName = "timeout";
 
         // Inform user about the timeout
-        await interaction.editReply({
-            content: "You did not respond in time (60s).\nPlease try the command again if you wish to create a group.",
-            ephemeral: true,
-            components: [],
-        });
+        try {
+            await respond({
+                content: "You did not respond in time (60s).\nPlease try the command again if you wish to create a group.",
+                ephemeral: true,
+                components: [],
+            });
+        } catch (replyError) {
+            console.error("Failed to send timeout message to user:", replyError);
+        }
     } else {
         // Optionally send a message to the user if the error is different
-        await interaction.editReply({
-            content:
-                `An error occurred while processing your request.\nIf this was a mistake, feel free to ping <@${supportUserId}> in <#${supportChannelId}>`,
-            ephemeral: true,
-            components: [],
-        });
+        try {
+            await respond({
+                content:
+                    `An error occurred while processing your request.\nIf this was a mistake, feel free to ping <@${supportUserId}> in <#${supportChannelId}>`,
+                ephemeral: true,
+                components: [],
+            });
+        } catch (replyError) {
+            console.error("Failed to send error message to user:", replyError);
+        }
     }
 
     // Send the error to the database
-    await errorTable.create({
-        error_name: errorName || error.name,
-        error_message: error.message,
-        user_id: interaction.user.id,
-    });
+    try {
+        await errorTable.create({
+            error_name: errorName || error.name,
+            error_message: error.message,
+            user_id: interaction.user.id,
+        });
+    } catch (dbError) {
+        console.error("Failed to log error to database:", dbError);
+    }
 }
 
 async function processSendEmbedError(error, reason, userId) {
