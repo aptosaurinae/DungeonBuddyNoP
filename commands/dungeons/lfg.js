@@ -65,13 +65,28 @@ module.exports = {
         const channelNameSplit = channelName.split("-");
         const isSingularKeyLevel = channelNameSplit.length === 2;
 
-        const lowerDifficultyRange = parseInt(channelNameSplit[1].replace("m", ""));
+        const lowerDifficultyRange = parseInt(channelNameSplit[1]?.replace("m", ""));
 
         let upperDifficultyRange;
         if (isSingularKeyLevel) {
             upperDifficultyRange = lowerDifficultyRange;
         } else {
-            upperDifficultyRange = parseInt(channelNameSplit[2].replace("m", ""));
+            upperDifficultyRange = parseInt(channelNameSplit[2]?.replace("m", ""));
+        }
+
+        // Validate parsed ranges - if the channel name doesn't match the expected format,
+        // parseInt returns NaN and the for-loop produces zero options, which Discord rejects.
+        // Also catch inverted ranges (lower > upper) which would produce zero options.
+        if (isNaN(lowerDifficultyRange) || isNaN(upperDifficultyRange) || lowerDifficultyRange > upperDifficultyRange) {
+            try {
+                await interaction.reply({
+                    content: "This channel's name doesn't match the expected format for key levels. Please use /lfg in a key level channel.",
+                    ephemeral: true,
+                });
+            } catch (replyError) {
+                console.error("Failed to send channel format error to user:", replyError);
+            }
+            return;
         }
 
         const difficultyPrefix = lowerDifficultyRange === 0 ? "M" : "+";
@@ -81,6 +96,11 @@ module.exports = {
 
         for (let i = lowerDifficultyRange; i <= upperDifficultyRange; i++) {
             dungeonDifficultyRanges.push(i);
+        }
+
+        // Discord select menus allow a maximum of 25 options
+        if (dungeonDifficultyRanges.length > 25) {
+            dungeonDifficultyRanges.length = 25;
         }
 
         function getSelectDifficultyRow(difficultyPlaceholder) {
@@ -382,7 +402,12 @@ module.exports = {
                 }
             });
         } catch (e) {
-            processError(e, interaction);
+            try {
+                await processError(e, interaction);
+            } catch (errorHandlingError) {
+                console.error("Failed to send error response to user:", errorHandlingError);
+                console.error("Original error:", e);
+            }
         }
     },
 };

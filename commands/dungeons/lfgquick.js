@@ -212,7 +212,12 @@ module.exports = {
                 command_used: "lfgquick",
             });
         } catch (e) {
-            processError(e, interaction);
+            try {
+                await processError(e, interaction);
+            } catch (errorHandlingError) {
+                console.error("Failed to send error response to user:", errorHandlingError);
+                console.error("Original error:", e);
+            }
         }
     },
 };
