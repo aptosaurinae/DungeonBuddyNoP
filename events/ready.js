@@ -1,6 +1,7 @@
 const { Events } = require("discord.js");
 const { syncTables } = require("../utils/loadDb");
 const { loadStats } = require("../utils/loadStats");
+const { sweepActiveGroups, GROUP_SWEEP_INTERVAL_MS } = require("../utils/groupManager");
 
 const updateInterval = 1_800_000;
 
@@ -36,5 +37,13 @@ module.exports = {
         setInterval(() => {
             loadStats();
         }, updateInterval);
+
+        // Check persisted dungeon groups for formation timeouts and full-group
+        // auto-finish; the first run also picks up groups posted before a restart
+        const sweep = () =>
+            sweepActiveGroups(client).catch((err) => console.error("Error sweeping dungeon groups:", err));
+
+        sweep();
+        setInterval(sweep, GROUP_SWEEP_INTERVAL_MS);
     },
 };

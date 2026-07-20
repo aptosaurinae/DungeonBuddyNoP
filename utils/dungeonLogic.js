@@ -3,15 +3,17 @@ const {
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
     ButtonStyle,
-    ComponentType,
 } = require("discord.js");
 
 const { createButton } = require("./discordFunctions");
-const { generateRoleIcons, sendPassphraseToUser, addUserToRole, removeUserFromRole } = require("./utilFunctions");
+const { generateRoleIcons } = require("./utilFunctions");
 
-// Timeout constants
-const GROUP_CHANGES_TIMEOUT_MS = 60_000; // 1 minute for group change view
-const TEMP_FINISHED_TIMEOUT_MS = 600_000; // 10 minutes before auto-finishing
+// Buttons on dungeon embeds carry the group ID in their customId
+// (dungeon:<groupId>:<action>) so the global interactionCreate router can look
+// the group up in the database, which keeps buttons working across restarts
+function getDungeonCustomId(groupId, action) {
+    return `dungeon:${groupId}:${action}`;
+}
 
 function getEligibleComposition(mainObject) {
     if (!mainObject.interactionUser.userChosenRole) {
@@ -42,277 +44,6 @@ function getEligibleComposition(mainObject) {
     }
 
     return selectComposition;
-}
-
-class DungeonManager {
-    constructor() {
-        this.tempFinishedCollector = null;
-    }
-
-    async processDungeonEmbed(i, rolesToTag, dungeon, difficulty, mainObject, groupUtilityCollector, callUser) {
-        if (!i.deferred && !i.replied) {
-            await i.deferUpdate();
-        }
-
-        const newDungeonObject = getDungeonObject(dungeon, difficulty, mainObject);
-
-        const messageContent = `${mainObject.embedData.dungeonName} ${mainObject.embedData.dungeonDifficulty} - ${
-            newDungeonObject.status === "full" ? `~~${rolesToTag}~~` : rolesToTag
-        }`;
-
-        const newEmbedButtonRow = getDungeonButtonRow(mainObject);
-
-        try {
-            if (newDungeonObject.status === "full") {
-                const tempFinishedButtonRow = getTempFinishedButtonRow();
-
-                const tempFinishedMessage = await i.editReply({
-                    content: messageContent,
-                    embeds: [newDungeonObject],
-                    components: [tempFinishedButtonRow],
-                });
-
-                this.tempFinishedCollector = tempFinishedMessage.createMessageComponentCollector({
-                    componentType: ComponentType.Button,
-                    time: TEMP_FINISHED_TIMEOUT_MS,
-                });
-
-                this.tempFinishedCollector.on("end", async (_, reason) => {
-                    if (reason === "time" || reason === "finished") {
-                        groupUtilityCollector.stop("finished");
-                    } else if (reason === "groupInProgress") {
-                        this.tempFinishedCollector = null;
-                    }
-                });
-            } else {
-                if (this.tempFinishedCollector) {
-                    this.tempFinishedCollector.stop("groupInProgress");
-                }
-
-                await i.editReply({
-                    content: messageContent,
-                    embeds: [newDungeonObject],
-                    components: [newEmbedButtonRow],
-                });
-            }
-        } catch (e) {
-            console.log("Error processing dungeon embed:", e);
-            try {
-                await i.followUp({ content: "Something went wrong while updating the dungeon.", ephemeral: true });
-            } catch (_) {
-                // Fallback follow-up also failed, nothing more we can do
-            }
-        }
-
-        if (callUser === "newUser") {
-            await sendPassphraseToUser(i, mainObject);
-        }
-    }
-
-    async changeGroup(interaction, groupUtilityCollector, mainObject) {
-        try {
-            // Map user IDs to their nicknames and roles
-            let idNickRoleMapping = buildIdNickRoleMapping(mainObject);
-
-            const [groupRemoveUserRow, groupChangeRoleRow] = getGroupChangeUtilityRow(idNickRoleMapping, mainObject);
-            const groupChangeConfirmRow = getGroupChangeConfirmRow();
-
-            const groupChangesView = await interaction.followUp({
-                content:
-                    "Make changes to your group below.\n*To cancel your group click the 'Cancel Group' button 2x.*",
-                ephemeral: true,
-                components: [groupRemoveUserRow, groupChangeRoleRow, groupChangeConfirmRow],
-            });
-
-            // Add a collector to listen for the group changes
-            const groupChangesCollector = groupChangesView.createMessageComponentCollector({
-                ComponentType: ComponentType.Button,
-                time: GROUP_CHANGES_TIMEOUT_MS,
-            });
-
-            // Define variables to store the group changes
-            let usersToRemove = null;
-            let newGroupCreatorRole = null;
-            let cancelGroupCounter = 0;
-
-            groupChangesCollector.on("collect", async (i) => {
-                const dungeonName = mainObject.embedData.dungeonName;
-                const dungeonDifficulty = mainObject.embedData.dungeonDifficulty;
-                const dungeonObject = getDungeonObject(dungeonName, dungeonDifficulty, mainObject);
-                const groupStatus = dungeonObject.status;
-
-                // Reset cancel counter when any other button is clicked
-                if (i.customId !== "cancelGroup") {
-                    cancelGroupCounter = 0;
-                }
-
-                if (i.customId === "removeGroupUsers") {
-                    // Don't update the value if there's no users to remove
-                    if (i.values[0] !== "none") {
-                        usersToRemove = i.values;
-                    }
-                    await i.deferUpdate();
-                } else if (i.customId === "changeRole") {
-                    // Don't update the value if there's no roles to change to
-                    if (i.values[0] !== "none") {
-                        newGroupCreatorRole = i.values[0];
-                    }
-                    await i.deferUpdate();
-                } else if (i.customId === "confirmGroupChanges") {
-                    const rolesToTag = mainObject.embedData.rolesToTag;
-                    const callUser = "existingUser";
-
-                    // Check if the user has made any changes
-                    if (!usersToRemove && !newGroupCreatorRole) {
-                        await i.deferUpdate();
-                        return;
-                    }
-
-                    // TODO: Change this so when the user wants to remove members they can choose to swap to that role
-                    if (usersToRemove) {
-                        // Update the idNickRoleMapping to make sure the member hasn't left already
-                        idNickRoleMapping = buildIdNickRoleMapping(mainObject);
-
-                        usersToRemove.forEach((userId) => {
-                            try {
-                                if (!idNickRoleMapping[userId]) {
-                                    return;
-                                }
-
-                                const { nickname, role } = idNickRoleMapping[userId];
-                                removeUserFromRole(userId, nickname, mainObject, role, mainObject.roles[role]);
-                            } catch (e) {
-                                console.log("Error removing user from role:", e);
-                            }
-                        });
-                        // Reset the users to remove to null after processing to avoid errors
-                        usersToRemove = null;
-                    }
-                    if (newGroupCreatorRole) {
-                        const role = mainObject.roles[newGroupCreatorRole];
-                        let contentMessage = "";
-
-                        // Check if the role is unavailable at the moment
-                        if (role.inProgress) {
-                            contentMessage = `The ${newGroupCreatorRole} role is unavailable at the moment. No changes have been made.`;
-                        } else {
-                            // Determine if the role is full based on its type and number of spots
-                            const isDPSFull = newGroupCreatorRole === "DPS" && role.spots.length >= 3;
-                            const isOtherRolesFull = newGroupCreatorRole !== "DPS" && role.spots.length >= 1;
-
-                            if (isDPSFull || isOtherRolesFull) {
-                                contentMessage = `The ${newGroupCreatorRole} role is full. No changes have been made.`;
-                            }
-                        }
-
-                        if (contentMessage) {
-                            // Reset the new group creator role after failing to avoid errors
-                            newGroupCreatorRole = null;
-
-                            await i.update({
-                                content: contentMessage,
-                                ephemeral: true,
-                                components: [],
-                            });
-                            return;
-                        }
-
-                        // Temporarily set the new role to inProgress
-                        role.inProgress = true;
-
-                        const interactionUser = mainObject.interactionUser;
-                        addUserToRole(
-                            interactionUser.userId,
-                            interactionUser.nickname + " 🚩",
-                            mainObject,
-                            newGroupCreatorRole,
-                            "groupCancellationCollector"
-                        );
-
-                        // Reset the value to false after the user has been added
-                        role.inProgress = false;
-
-                        // Update the main object with the new group creator role
-                        mainObject.interactionUser.userChosenRole = newGroupCreatorRole;
-
-                        // Reset the new group creator role to null after processing
-                        newGroupCreatorRole = null;
-                    }
-
-                    await this.processDungeonEmbed(
-                        interaction,
-                        rolesToTag,
-                        dungeonName,
-                        dungeonDifficulty,
-                        mainObject,
-                        groupUtilityCollector,
-                        callUser
-                    );
-
-                    await i.update({
-                        content: "Your changes have been made to the group.",
-                        ephemeral: true,
-                        components: [],
-                    });
-
-                    groupChangesCollector.stop("confirmGroupChanges");
-                } else if (i.customId === "abortGroupChanges") {
-                    await i.update({
-                        content: "No changes have been made to the group.",
-                        ephemeral: true,
-                        components: [],
-                    });
-                    groupChangesCollector.stop("abortGroupChanges");
-                } else if (i.customId === "cancelGroup") {
-                    // Pressing the cancel button twice will stop the main collector
-                    if (cancelGroupCounter >= 1) {
-                        await i.update({
-                            content: "The group has been cancelled.",
-                            ephemeral: true,
-                            components: [],
-                        });
-                        groupChangesCollector.stop("confirmCancelGroup");
-                        return;
-                    }
-                    cancelGroupCounter++;
-                    await i.reply({
-                        content: "Are you sure? Click 'Cancel Group' one more time to confirm.",
-                        ephemeral: true,
-                    });
-                } else if (i.customId === "finishGroup") {
-                    if (groupStatus !== "full") {
-                        await i.reply({ content: "You cannot finish the group until it is full!", ephemeral: true });
-                    } else {
-                        await i.update({
-                            content: "The group is now formed. Enjoy your dungeon!",
-                            ephemeral: true,
-                            components: [],
-                        });
-                        groupChangesCollector.stop("finishGroup");
-                    }
-                }
-            });
-
-            groupChangesCollector.on("end", async (_, reason) => {
-                if (reason === "time") {
-                    interaction.followUp({
-                        content:
-                            "The group utility view has expired (60s). Please click on ⚙️ to open the group utility again.",
-                        ephemeral: true,
-                        components: [],
-                    });
-                } else if (reason === "confirmCancelGroup") {
-                    // Call the stop method to stop the groupUtilityCollector and cancel the group
-                    groupUtilityCollector.stop("cancelledAfterCreation");
-                } else if (reason === "finishGroup") {
-                    // Call the stop method to stop the tempFinishedCollector and finish the group
-                    this.tempFinishedCollector.stop("finished");
-                }
-            });
-        } catch (e) {
-            console.log("Error with group utility changes", e);
-        }
-    }
 }
 
 function getDungeonObject(dungeon, difficulty, mainObject) {
@@ -384,23 +115,53 @@ function getDungeonObject(dungeon, difficulty, mainObject) {
     return dungeonObject;
 }
 
-function getDungeonButtonRow(mainObject) {
+function getDungeonButtonRow(mainObject, groupId) {
     const tank = mainObject.roles.Tank;
     const healer = mainObject.roles.Healer;
     const dps = mainObject.roles.DPS;
 
     return new ActionRowBuilder().addComponents(
-        createButton({ customId: tank.customId, emoji: tank.emoji, style: tank.style, disabled: tank.disabled }),
-        createButton({ customId: healer.customId, emoji: healer.emoji, style: healer.style, disabled: healer.disabled }),
-        createButton({ customId: dps.customId, emoji: dps.emoji, style: dps.style, disabled: dps.disabled }),
-        createButton({ customId: "getPassphrase", emoji: "🔑", style: ButtonStyle.Secondary, disabled: false }),
-        createButton({ customId: "groupUtility", label: "⚙️", style: ButtonStyle.Secondary, disabled: false })
+        createButton({
+            customId: getDungeonCustomId(groupId, tank.customId),
+            emoji: tank.emoji,
+            style: tank.style,
+            disabled: tank.disabled,
+        }),
+        createButton({
+            customId: getDungeonCustomId(groupId, healer.customId),
+            emoji: healer.emoji,
+            style: healer.style,
+            disabled: healer.disabled,
+        }),
+        createButton({
+            customId: getDungeonCustomId(groupId, dps.customId),
+            emoji: dps.emoji,
+            style: dps.style,
+            disabled: dps.disabled,
+        }),
+        createButton({
+            customId: getDungeonCustomId(groupId, "getPassphrase"),
+            emoji: "🔑",
+            style: ButtonStyle.Secondary,
+            disabled: false,
+        }),
+        createButton({
+            customId: getDungeonCustomId(groupId, "groupUtility"),
+            label: "⚙️",
+            style: ButtonStyle.Secondary,
+            disabled: false,
+        })
     );
 }
 
-function getTempFinishedButtonRow() {
+function getTempFinishedButtonRow(groupId) {
     return new ActionRowBuilder().addComponents(
-        createButton({ customId: "groupUtility", emoji: "⚙️", style: ButtonStyle.Secondary, disabled: false })
+        createButton({
+            customId: getDungeonCustomId(groupId, "groupUtility"),
+            emoji: "⚙️",
+            style: ButtonStyle.Secondary,
+            disabled: false,
+        })
     );
 }
 
@@ -518,8 +279,12 @@ function buildIdNickRoleMapping(mainObject) {
 }
 
 module.exports = {
+    getDungeonCustomId,
     getEligibleComposition,
     getDungeonObject,
     getDungeonButtonRow,
-    DungeonManager,
+    getTempFinishedButtonRow,
+    getGroupChangeUtilityRow,
+    getGroupChangeConfirmRow,
+    buildIdNickRoleMapping,
 };

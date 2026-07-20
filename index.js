@@ -6,6 +6,16 @@ const { Client, Collection, GatewayIntentBits } = require("discord.js");
 const { token, clientId, guildId } = require("./config");
 const { deployCommands } = require("./utils/deployCommands");
 
+// Global safety nets: a single failed interaction (e.g. an expired token
+// rejecting with DiscordAPIError 10062) must never take down the bot
+process.on("unhandledRejection", (err) => {
+    console.error("Unhandled rejection:", err);
+});
+
+process.on("uncaughtException", (err) => {
+    console.error("Uncaught exception:", err);
+});
+
 // Initialize a global map to store roles
 global.roleMap = new Map();
 

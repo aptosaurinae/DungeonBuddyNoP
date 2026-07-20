@@ -116,9 +116,35 @@ const interactionStatusTable = sequelize.define("interaction_status", {
     },
 });
 
+// Active (not yet finished) dungeon groups, persisted so embed buttons keep
+// working after a restart. The pre-existing tables above are unchanged.
+const activeDungeonTable = sequelize.define("active_dungeons", {
+    active_dungeon_id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+    },
+    channel_id: {
+        type: Sequelize.STRING,
+        allowNull: false,
+    },
+    message_id: {
+        type: Sequelize.STRING,
+        allowNull: true,
+    },
+    expires_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+    },
+    state: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+    },
+});
+
 function syncTables() {
     // Never set force to true in a production environment as it will drop all tables
     return sequelize.sync({ force: false });
 }
 
-module.exports = { syncTables, dungeonInstanceTable, errorTable, interactionStatusTable, sequelize };
+module.exports = { syncTables, dungeonInstanceTable, errorTable, interactionStatusTable, activeDungeonTable, sequelize };
