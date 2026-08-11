@@ -96,7 +96,8 @@ function parseRolesToTag(difficulty, requiredComposition, guildId) {
     else if (difficulty < 10) roleDifficultyString = "-M7-9";
     else if (difficulty < 12) roleDifficultyString = "-M10-11";
     else if (difficulty < 14) roleDifficultyString = "-M12-13";
-    else roleDifficultyString = "-M14+";
+    else if (difficulty < 17) roleDifficultyString = "-M14-16";
+    else roleDifficultyString = "-M17+";
 
     const globalRoles = global.roleMap.get(guildId);
     const rolesToTag = [];
