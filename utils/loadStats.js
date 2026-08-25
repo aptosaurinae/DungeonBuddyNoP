@@ -23,10 +23,10 @@ const dungeonStatsObject = {
 
 const key_levels = {
     key_levels_one: ["M0"],
-    key_levels_two: ["+2", "+3"],
-    key_levels_three: ["+4", "+5", "+6"],
-    key_levels_four: ["+7", "+8", "+9"],
-    key_levels_five: ["+10"],
+    key_levels_two: ["+2", "+3", "+4", "+5"],
+    key_levels_three: ["+6", "+7", "+8", "+9"],
+    key_levels_four: ["+10", "+11"],
+    key_levels_five: ["+12", "+13"],
 };
 
 const popularKeysQuery = `
