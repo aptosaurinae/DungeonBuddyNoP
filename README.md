@@ -66,7 +66,7 @@ This bot is containerized with Docker and can be deployed locally for developmen
 3. **Edit `.env` with your test bot credentials**
    ```env
    NODE_ENV=development
-   
+
    TEST_BOT_TOKEN=your_test_bot_token
    TEST_CLIENT_ID=your_test_client_id
    TEST_GUILD_ID=your_test_guild_id
@@ -164,7 +164,7 @@ PROD_DB_STORAGE=/app/data/database.sqlite
 2. Select your application (or create a new one)
 3. **Client ID**: Found on "General Information" page
 4. **Bot Token**: Found on "Bot" page (click "Reset Token" if needed)
-5. **Guild ID**: 
+5. **Guild ID**:
    - Enable Developer Mode in Discord (User Settings > Advanced > Developer Mode)
    - Right-click your server > "Copy Server ID"
 
@@ -220,6 +220,12 @@ git push origin main
 | `TEST_CLIENT_ID` | Discord application client ID | `1234567890123456789` |
 | `TEST_GUILD_ID` | Discord server ID | `9876543210987654321` |
 | `TEST_DB_STORAGE` | Database file path | `./data/database.sqlite` |
+
+### Other
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MAX_KEY_LEVEL` | Maximum key level that DB can be used up to | 13 |
 
 ### Optional
 
@@ -349,4 +355,3 @@ This project is licensed under the [CC BY-NC 4.0 License](https://creativecommon
 
 If you have questions about the licensing terms, please contact me at the [No Pressure](https://discord.gg/nopressureeu)
 discord server.
-

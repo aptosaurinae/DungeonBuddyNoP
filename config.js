@@ -13,4 +13,5 @@ module.exports = {
     tankEmoji: prodEnv ? `<:tankrole:1193998691200159754>` : `<:tankrole:1181327150708686848>`,
     healerEmoji: prodEnv ? `<:healerrole:1193998685894357172>` : `<:healerole:1181327153749561364>`,
     dpsEmoji: prodEnv ? `<:dpsrole:1193998689056870430>` : `<:dpsrole:1181327148624117870>`,
+    maxKeyLevel: prodEnv ? process.env.MAX_KEY_LEVEL: process.env.MAX_KEY_LEVEL
 };

@@ -6,6 +6,7 @@ const {
     ButtonBuilder,
 } = require("discord.js");
 
+const { maxKeyLevel } = require("../../config.js")
 const { dungeonList } = require("../../utils/loadJson");
 const { getMainObject } = require("../../utils/getMainObject");
 const { stripListedAsNumbers, isDPSRole } = require("../../utils/utilFunctions");
@@ -72,6 +73,20 @@ module.exports = {
             upperDifficultyRange = lowerDifficultyRange;
         } else {
             upperDifficultyRange = parseInt(channelNameSplit[2]?.replace("m", ""));
+        }
+
+        // Hard cap dungeon range based on config
+        // Stops DB being active for boiler level channels
+        if (lowerDifficultyRange > maxKeyLevel) {
+            try {
+                await interaction.reply({
+                    content: "Dungeon Buddy is not available for this key level.",
+                    ephemeral: true,
+                });
+            } catch (replyError) {
+                console.error("Failed to send channel format error to user:", replyError);
+            }
+            return;
         }
 
         // Validate parsed ranges - if the channel name doesn't match the expected format,
